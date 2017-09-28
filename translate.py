@@ -1,6 +1,4 @@
-import sublime
-import sublime_plugin
-import re
+import sublime, sublime_plugin, re
 from urllib.request import urlopen, Request
 from urllib.parse import urlencode, quote
 from urllib import error
@@ -27,27 +25,29 @@ class TranslateCommand(sublime_plugin.TextCommand):
 		target_lang = settings.get('target_lang') or 'bg'
 
 		v = self.view
-		regions = v.sel()
+		regions = v.sel() # selections
 
 		for region in regions:
-			if not region.empty():
 
-				selection = v.substr(region)
-				if len(selection) < 1: return
-				invert = re.search('[а-я]', selection, flags=re.IGNORECASE)
+			# if no selection -> translate the closest word
+			pt = region.empty() and region or v.word(region)
+			phrase = v.substr(pt)
+			# if the word is shorter than 1 -> do nothing
+			if len(phrase.strip()) > 1:
+				invert = re.search('[а-я]', phrase, flags=re.IGNORECASE)
 				params = {
 					'client': 'gtx',
 					'dt'	: 'bd',
 					'dj'	: 1,
 					'sl'	: bg_en_only and ('bg' if invert else 'en') or source_lang,
 					'tl'	: bg_en_only and ('en' if invert else 'bg') or target_lang,
-					'q'		: selection
+					'q'		: phrase
 				}
-
+				sublime.status_message( 'translate: ' + params['sl'] + ' => ' + params['tl'])
 				# PREPARE THE REQUEST
 				req = Request(api + urlencode(params) + '&dt=t', headers = headers)
 
-				# TRY TO MAKE THE REQUEST; TIMEOUT IN SECONDS
+				# TRY TO MAKE THE REQUEST; TIMEOUT IS IN SECONDS
 				try:
 					json = urlopen(req, timeout = 4).read()
 
@@ -69,11 +69,13 @@ class TranslateCommand(sublime_plugin.TextCommand):
 
 				def on_select(i):
 					if i > -1:
-						v.replace(edit, region, items[i])
+						# select the whole region that will be replaced
+						regions.add(region.cover(pt));
+						v.replace(edit, pt, items[i])
 
-				if len(regions) < 2 and len(items) > 3: 
+
+				if len(regions) < 2 and len(items) > 4: 
 					v.show_popup_menu(items, on_select)
 				else:
 					on_select(0)
-				# v.window().show_quick_panel(items, on_select)
 
